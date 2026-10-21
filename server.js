@@ -1,8 +1,8 @@
 import express from "express"
 import dotenv from 'dotenv'
 import Connection, { connectDb } from "./App/config/connection.js";
-import "./App/models/User.js";
-import "./App/models/AllMode.js";
+import { DEFAULT_QUESTS, Quest } from "./App/models/Quest.js";
+import "./App/models/UserProfile.js";
 import { FrontendRoutes } from "./App/routes/FrontendRoutes.js";
 dotenv.config()
 
@@ -11,36 +11,32 @@ const app = express();
 app.use(express.json());
 // app.use(cors())
 
-const PORT = process.env.PORT
-
-
+const PORT = process.env.PORT || 5000;
 app.use(express.urlencoded({ extended: true }));
-
 app.use('/api', FrontendRoutes)  // Route is /api/web/create
 
 app.get('/', async (req, res) => {
     res.send("Hello Wordl!!");
 })
 
-let syncDb = async () => {
-    // COnnection to db
-    await connectDb()
+app.use((error, req, res, next) => {
+    console.error(error);
+    if (res.headersSent) {
+        return next(error);
+    }
+    return res.status(500).json({ error: "Internal server error." });
+});
 
-    // autometic table connections 
-    Connection.sync({
-        alter: true
-    })
-
-
-    // Create user 
-
-
-
-
-    // Server Starts
+const startServer = async () => {
+    await connectDb();
+    await Connection.sync({ alter: true });
+    await Quest.bulkCreate(DEFAULT_QUESTS, { ignoreDuplicates: true });
     app.listen(PORT, () => {
-        console.log(`Server connected : http://localhost:${PORT}`)
-    })
-}
+        console.log(`Server connected : http://localhost:${PORT}`);
+    });
+};
 
-syncDb()
+startServer().catch((error) => {
+    console.error("Failed to start server:", error);
+    process.exitCode = 1;
+});

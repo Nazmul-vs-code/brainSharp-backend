@@ -16,11 +16,8 @@ let Connection = new Sequelize(
 )
 
 export let connectDb = async () => {
-    await Connection.authenticate()
-        .then(() => console.log("DB connected!"))
-        .catch((err) => {
-            console.log("Error:", err.message);
-        });
+    await Connection.authenticate();
+    console.log("DB connected!");
 };
 
 
