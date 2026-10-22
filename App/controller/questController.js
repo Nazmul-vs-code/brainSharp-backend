@@ -6,6 +6,12 @@ import { getOrCreateUserProfile } from "../services/userProfileService.js";
 
 const getToday = () => new Date().toISOString().slice(0, 10);
 
+const getYesterday = (today) => {
+    const date = new Date(`${today}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() - 1);
+    return date.toISOString().slice(0, 10);
+};
+
 export const getQuests = async (req, res, next) => {
     try {
         await ensureDefaultQuests();
@@ -123,8 +129,12 @@ export const completeQuest = async (req, res, next) => {
 
         profile.xp += xpEarned;
         profile.level = Math.floor(profile.xp / 20) + 1;
-        profile.streakCount += 1;
-        profile.lastActiveDate = today;
+        if (profile.lastActiveDate !== today) {
+            profile.streakCount = profile.lastActiveDate === getYesterday(today)
+                ? profile.streakCount + 1
+                : 1;
+            profile.lastActiveDate = today;
+        }
         await profile.save({ transaction });
         await transaction.commit();
 
