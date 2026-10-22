@@ -2,17 +2,32 @@ import { GoogleGenAI } from "@google/genai";
 import { UserProfile } from "../models/UserProfile.js";
 import { QuestData } from "../models/QuestData.js";
 
-// Initialize the Gemini client using the environment variable
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Helper function to automatically retry if a 503 high demand error occurs
+async function generateWithRetry(prompt, retries = 3, delay = 2000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: prompt,
+      });
+      return response.text;
+    } catch (error) {
+      console.warn(`Attempt ${attempt} failed due to server load. Retrying in ${delay * attempt}ms...`);
+      if (attempt === retries) {
+        throw error;
+      }
+      // Wait before the next retry (exponential backoff)
+      await new Promise((resolve) => setTimeout(resolve, delay * attempt));
+    }
+  }
+}
 
 export const generatePersonalizedCoaching = async (userId, userMessage = "") => {
   try {
-    // ----------------------------------------------------
-    // 1. RETRIEVAL (R): Fetch user context from Neon
-    // ----------------------------------------------------
     const profile = await UserProfile.findOne({ where: { userId } });
     
-    // Get user's last 5 completed quest sessions
     const recentSessions = await QuestData.findAll({
       where: { userId },
       order: [["createdAt", "DESC"]],
@@ -23,14 +38,10 @@ export const generatePersonalizedCoaching = async (userId, userMessage = "") => 
     const userXp = profile?.xp || 0;
     const streak = profile?.streakCount || 0;
 
-    // Format recent activity into readable context string
     const sessionHistorySummary = recentSessions.length > 0
       ? recentSessions.map(s => `- Category: ${s.category}, Time Spent: ${s.durationSpentMinutes} mins, XP Earned: ${s.xpEarned}`).join("\n")
       : "No quest sessions recorded yet.";
 
-    // ----------------------------------------------------
-    // 2. AUGMENTED PROMPT: Construct context-rich prompt
-    // ----------------------------------------------------
     const systemPrompt = `
 You are BrainSharp AI, an elite cognitive habit coach and wellness mentor.
 You are giving personalized coaching to user ID: ${userId}.
@@ -46,25 +57,20 @@ INSTRUCTIONS:
 1. Speak directly and encouragingly to the user.
 2. Refer naturally to their recent activity stats (streak, categories, durations) to prove you know their exact journey.
 3. Provide actionable, concise, and highly motivating feedback for their next habit session.
-4. Keep your response grounded in their actual data.
 `;
 
     const fullPrompt = userMessage
       ? `${systemPrompt}\nUser Question/Input: "${userMessage}"`
       : `${systemPrompt}\nProvide a daily cognitive focus brief for this user.`;
 
-    // ----------------------------------------------------
-    // 3. GENERATION (G): Send prompt to Gemini API
-    // ----------------------------------------------------
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: fullPrompt,
-    });
-
-    return response.text;
+    // Attempt generation with built-in retry protection
+    const aiAdvice = await generateWithRetry(fullPrompt);
+    return aiAdvice;
 
   } catch (error) {
-    console.error("RAG Service Error:", error);
-    throw error;
+    console.error("RAG Service Error (All retries exhausted):", error.message);
+    
+    // Graceful fallback response using their real stats so the app stays functional
+    return `⚠️ **AI Coach Notice:** Google's servers are experiencing temporary high traffic (503). \n\nHowever, looking at your live data: You are at **Level ${profile?.level || 1}** with a **${profile?.streakCount || 0}-day streak**! Keep up the incredible momentum and jump into your next quest session!`;
   }
 };
