@@ -5,20 +5,15 @@ import { UserProfile } from "../models/UserProfile.js";
 
 const CATEGORIES = ["mental", "physical", "puzzle"];
 
-const getUsersById = async (userIds) => {
-    if (userIds.length === 0) {
-        return new Map();
-    }
-
+const getAllUsers = async () => {
     const users = await Connection.query(
-        'SELECT "id", "name", "image", "email" FROM "user" WHERE "id" IN (:userIds)',
+        'SELECT "id", "name", "image", "email" FROM "user"',
         {
-            replacements: { userIds },
             type: QueryTypes.SELECT,
         }
     );
 
-    return new Map(users.map((user) => [user.id, user]));
+    return users;
 };
 
 const getDisplayName = (userId, user) => (
@@ -38,8 +33,10 @@ export const getLeaderboard = async (req, res, next) => {
     }
 
     try {
+        const users = await getAllUsers();
+
         if (category && category !== "global") {
-            const leaderboard = await QuestData.findAll({
+            const categoryStats = await QuestData.findAll({
                 attributes: [
                     "userId",
                     [fn("SUM", col("xpEarned")), "totalCategoryXp"],
@@ -47,50 +44,57 @@ export const getLeaderboard = async (req, res, next) => {
                 ],
                 where: { category },
                 group: ["userId"],
-                order: [[fn("SUM", col("xpEarned")), "DESC"]],
-                limit: 10,
                 raw: true,
             });
-            const usersById = await getUsersById(leaderboard.map(({ userId }) => userId));
+            const statsByUserId = new Map(categoryStats.map((entry) => [
+                entry.userId,
+                {
+                    totalCategoryXp: Number(entry.totalCategoryXp),
+                    totalTimeSpent: Number(entry.totalTimeSpent),
+                },
+            ]));
+            const leaderboard = users.map((user) => {
+                const stats = statsByUserId.get(user.id);
+                return {
+                    userId: user.id,
+                    name: getDisplayName(user.id, user),
+                    image: user.image ?? null,
+                    totalCategoryXp: stats?.totalCategoryXp ?? 0,
+                    totalTimeSpent: stats?.totalTimeSpent ?? 0,
+                };
+            }).sort((first, second) => second.totalCategoryXp - first.totalCategoryXp);
 
             return res.status(200).json({
                 status: true,
                 category,
-                leaderboard: leaderboard.map((entry) => {
-                    const user = usersById.get(entry.userId);
-                    return {
-                        userId: entry.userId,
-                        name: getDisplayName(entry.userId, user),
-                        image: user?.image ?? null,
-                        totalCategoryXp: Number(entry.totalCategoryXp),
-                        totalTimeSpent: Number(entry.totalTimeSpent),
-                    };
-                }),
+                leaderboard,
             });
         }
 
         const profiles = await UserProfile.findAll({
             attributes: ["userId", "xp", "level", "streakCount"],
-            order: [["xp", "DESC"]],
-            limit: 20,
         });
-        const usersById = await getUsersById(profiles.map(({ userId }) => userId));
+        const profilesByUserId = new Map(profiles.map((profile) => [
+            profile.userId,
+            profile,
+        ]));
+        const leaderboard = users.map((user) => {
+            const profile = profilesByUserId.get(user.id);
+            return {
+                userId: user.id,
+                name: getDisplayName(user.id, user),
+                image: user.image ?? null,
+                email: user.email ?? null,
+                xp: profile?.xp ?? 0,
+                level: profile?.level ?? 1,
+                streakCount: profile?.streakCount ?? 0,
+            };
+        }).sort((first, second) => second.xp - first.xp);
 
         return res.status(200).json({
             status: true,
             category: "global",
-            leaderboard: profiles.map((profile) => {
-                const user = usersById.get(profile.userId);
-                return {
-                    userId: profile.userId,
-                    name: getDisplayName(profile.userId, user),
-                    image: user?.image ?? null,
-                    email: user?.email ?? null,
-                    xp: profile.xp,
-                    level: profile.level,
-                    streakCount: profile.streakCount,
-                };
-            }),
+            leaderboard,
         });
     } catch (error) {
         return next(error);
