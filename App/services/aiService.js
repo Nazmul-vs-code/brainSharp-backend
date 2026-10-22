@@ -4,7 +4,7 @@ import { QuestData } from "../models/QuestData.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Helper function to automatically retry if a 503 high demand error occurs
+// Helper function with automatic retry for 503 high demand errors
 async function generateWithRetry(prompt, retries = 3, delay = 2000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -18,17 +18,20 @@ async function generateWithRetry(prompt, retries = 3, delay = 2000) {
       if (attempt === retries) {
         throw error;
       }
-      // Wait before the next retry (exponential backoff)
       await new Promise((resolve) => setTimeout(resolve, delay * attempt));
     }
   }
 }
 
 export const generatePersonalizedCoaching = async (userId, userMessage = "") => {
+  // Declare variables outside try/catch scope so fallback can access them safely
+  let profile = null;
+  let recentSessions = [];
+
   try {
-    const profile = await UserProfile.findOne({ where: { userId } });
+    profile = await UserProfile.findOne({ where: { userId } });
     
-    const recentSessions = await QuestData.findAll({
+    recentSessions = await QuestData.findAll({
       where: { userId },
       order: [["createdAt", "DESC"]],
       limit: 5,
@@ -63,14 +66,13 @@ INSTRUCTIONS:
       ? `${systemPrompt}\nUser Question/Input: "${userMessage}"`
       : `${systemPrompt}\nProvide a daily cognitive focus brief for this user.`;
 
-    // Attempt generation with built-in retry protection
     const aiAdvice = await generateWithRetry(fullPrompt);
     return aiAdvice;
 
   } catch (error) {
     console.error("RAG Service Error (All retries exhausted):", error.message);
     
-    // Graceful fallback response using their real stats so the app stays functional
+    // Fallback response now has safe access to `profile`
     return `⚠️ **AI Coach Notice:** Google's servers are experiencing temporary high traffic (503). \n\nHowever, looking at your live data: You are at **Level ${profile?.level || 1}** with a **${profile?.streakCount || 0}-day streak**! Keep up the incredible momentum and jump into your next quest session!`;
   }
 };
