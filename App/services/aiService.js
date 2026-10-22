@@ -45,9 +45,9 @@ INSTRUCTIONS:
       ? `${systemPrompt}\nUser Question/Input: "${userMessage}"`
       : `${systemPrompt}\nProvide a daily cognitive focus brief for this user.`;
 
-    // 3. GENERATION (G): Direct call using stable gemini-2.0-flash model
+    // 3. GENERATION (G): Direct call using stable gemini-3.8-flash model
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.8-flash",
       contents: fullPrompt,
     });
 
