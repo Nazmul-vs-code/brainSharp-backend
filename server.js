@@ -1,8 +1,7 @@
 import express from "express"
 import dotenv from 'dotenv'
 import Connection, { connectDb } from "./App/config/connection.js";
-import { DEFAULT_QUESTS, Quest } from "./App/models/Quest.js";
-import "./App/models/UserProfile.js";
+import { ensureDefaultQuests } from "./App/models/index.js";
 import { FrontendRoutes } from "./App/routes/FrontendRoutes.js";
 dotenv.config()
 
@@ -30,9 +29,9 @@ app.use((error, req, res, next) => {
 const startServer = async () => {
     await connectDb();
     await Connection.sync({ alter: true });
-    await Quest.bulkCreate(DEFAULT_QUESTS, { ignoreDuplicates: true });
+    await ensureDefaultQuests();
     app.listen(PORT, () => {
-        console.log(`Server connected : http://localhost:${PORT}`);
+        // console.log(`Server connected : http://localhost:${PORT}`);
     });
 };
 

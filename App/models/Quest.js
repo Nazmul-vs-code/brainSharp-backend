@@ -69,3 +69,7 @@ export const DEFAULT_QUESTS = [
         description: "Give your mind a workout with a short puzzle.",
     },
 ];
+
+export async function ensureDefaultQuests() {
+    await Quest.bulkCreate(DEFAULT_QUESTS, { ignoreDuplicates: true });
+}

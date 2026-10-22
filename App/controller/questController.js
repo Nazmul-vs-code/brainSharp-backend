@@ -1,19 +1,14 @@
 import Connection from "../config/connection.js";
-import { Quest } from "../models/Quest.js";
-import { UserProfile } from "../models/UserProfile.js";
+import { ensureDefaultQuests, Quest } from "../models/Quest.js";
+import { QuestData } from "../models/QuestData.js";
 import { UserQuestProgress } from "../models/UserQuestProgress.js";
 import { getOrCreateUserProfile } from "../services/userProfileService.js";
 
 const getToday = () => new Date().toISOString().slice(0, 10);
 
-const getYesterday = (today) => {
-    const date = new Date(`${today}T00:00:00.000Z`);
-    date.setUTCDate(date.getUTCDate() - 1);
-    return date.toISOString().slice(0, 10);
-};
-
 export const getQuests = async (req, res, next) => {
     try {
+        await ensureDefaultQuests();
         const quests = await Quest.findAll({ order: [["id", "ASC"]] });
         return res.status(200).json({ quests });
     } catch (error) {
@@ -33,6 +28,7 @@ export const getTodayQuests = async (req, res, next) => {
             return res.status(404).json({ error: "User not found." });
         }
 
+        await ensureDefaultQuests();
         const today = getToday();
         const quests = await Quest.findAll({ order: [["id", "ASC"]] });
         await UserQuestProgress.bulkCreate(
@@ -72,10 +68,18 @@ export const getTodayQuests = async (req, res, next) => {
 };
 
 export const completeQuest = async (req, res, next) => {
-    const { userId, questId } = req.body ?? {};
-    if (typeof userId !== "string" || !userId.trim()
-        || !Number.isInteger(Number(questId)) || Number(questId) < 1) {
-        return res.status(400).json({ error: "userId must be a non-empty string and questId a positive integer." });
+    const { userId, questId, durationSpentMinutes = 10 } = req.body ?? {};
+    if (
+        typeof userId !== "string"
+        || !userId.trim()
+        || !Number.isInteger(Number(questId))
+        || Number(questId) < 1
+        || !Number.isInteger(durationSpentMinutes)
+        || durationSpentMinutes < 1
+    ) {
+        return res.status(400).json({
+            error: "userId, a positive questId, and a positive integer durationSpentMinutes are required.",
+        });
     }
 
     const today = getToday();
@@ -91,7 +95,7 @@ export const completeQuest = async (req, res, next) => {
             return res.status(404).json({ error: "User not found." });
         }
 
-        const quest = await Quest.findByPk(questId, { transaction });
+        const quest = await Quest.findByPk(Number(questId), { transaction });
         if (!quest) {
             await transaction.rollback();
             return res.status(404).json({ error: "Quest not found." });
@@ -103,29 +107,38 @@ export const completeQuest = async (req, res, next) => {
             transaction,
             lock: transaction.LOCK.UPDATE,
         });
-        if (progress.status === "completed") {
-            await transaction.rollback();
-            return res.status(409).json({ error: "Quest already completed today." });
-        }
-
         progress.status = "completed";
         progress.completedDate = today;
         await progress.save({ transaction });
 
-        const previousDate = profile.lastActiveDate;
-        const previousStreak = profile.streakCount;
-        if (previousDate !== today) {
-            profile.streakCount = previousDate === getYesterday(today) ? previousStreak + 1 : 1;
-            profile.lastActiveDate = today;
-        }
-        profile.xp += quest.xpReward;
+        const bonusXp = Math.max(0, durationSpentMinutes - 10) * 2;
+        const xpEarned = quest.xpReward + bonusXp;
+        const session = await QuestData.create({
+            userId: profile.userId,
+            questId: quest.id,
+            category: quest.category,
+            durationSpentMinutes,
+            xpEarned,
+        }, { transaction });
+
+        profile.xp += xpEarned;
         profile.level = Math.floor(profile.xp / 20) + 1;
+        profile.streakCount += 1;
+        profile.lastActiveDate = today;
         await profile.save({ transaction });
         await transaction.commit();
 
         return res.status(200).json({
             message: "Quest completed.",
-            questProgress: progress,
+            session: {
+                id: session.id,
+                questId: session.questId,
+                category: session.category,
+                durationSpentMinutes: session.durationSpentMinutes,
+                baseXp: quest.xpReward,
+                bonusXp,
+                xpEarned: session.xpEarned,
+            },
             profile: {
                 userId: profile.userId,
                 xp: profile.xp,
@@ -136,7 +149,11 @@ export const completeQuest = async (req, res, next) => {
         });
     } catch (error) {
         if (transaction && !transaction.finished) {
-            await transaction.rollback();
+            try {
+                await transaction.rollback();
+            } catch (rollbackError) {
+                return next(new AggregateError([error, rollbackError], "Quest completion and rollback failed."));
+            }
         }
         return next(error);
     }
