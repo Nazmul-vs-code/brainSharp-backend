@@ -1,5 +1,6 @@
 import express from "express"
 import dotenv from 'dotenv'
+import cors from "cors";
 import Connection, { connectDb } from "./App/config/connection.js";
 import { ensureDefaultQuests } from "./App/models/index.js";
 import { FrontendRoutes } from "./App/routes/FrontendRoutes.js";
@@ -7,8 +8,14 @@ dotenv.config()
 
 const app = express();
 
+app.use(cors({
+    origin: "*",
+    credentials: false,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+}));
+
 app.use(express.json());
-// app.use(cors())
 
 const PORT = process.env.PORT || 5000;
 app.use(express.urlencoded({ extended: true }));
