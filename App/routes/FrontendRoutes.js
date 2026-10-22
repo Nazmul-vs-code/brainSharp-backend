@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { completeQuest, getQuests, getTodayQuests } from "../controller/questController.js";
+import { getAICoaching } from "../controller/aiController.js";
 import { getLeaderboard } from "../controller/leaderboardController.js";
 import { getProfile } from "../controller/profileController.js";
 

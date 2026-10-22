@@ -1,4 +1,4 @@
-import { generatePersonalizedCoaching } from "../services/aiService";
+import { generatePersonalizedCoaching } from "../services/aiService.js";
 
 export const getAICoaching = async (req, res) => {
   try {
