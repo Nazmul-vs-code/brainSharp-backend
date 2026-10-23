@@ -22,6 +22,27 @@ export const getQuests = async (req, res, next) => {
     }
 };
 
+export const getQuestProgress = async (req, res) => {
+    const { userId } = req.query;
+    if (typeof userId !== "string" || !userId.trim()) {
+        return res.status(400).json({ status: false, error: "userId is required." });
+    }
+
+    try {
+        const results = await UserQuestProgress.findAll({
+            where: { userId },
+            include: [{ model: Quest, as: "quest" }],
+        });
+        return res.status(200).json({ status: true, data: results });
+    } catch (error) {
+        console.error("Quest Progress Controller Error:", error);
+        return res.status(500).json({
+            status: false,
+            error: "Failed to retrieve quest progress.",
+        });
+    }
+};
+
 export const getTodayQuests = async (req, res, next) => {
     const { userId } = req.params;
     if (!userId?.trim()) {
