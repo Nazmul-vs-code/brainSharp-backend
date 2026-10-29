@@ -5,8 +5,9 @@ Express and Sequelize backend for the BrainSharp AI gamified wellness MVP.
 ## Run locally
 
 1. Copy `.env.example` to `.env` and set `DATABASE_URL` to a PostgreSQL connection string.
-2. Install dependencies with `npm install`.
-3. Start the API with `node server.js`.
+2. Set `GEMINI_API_KEY` in `.env` to your Google AI Studio API key to enable AI coaching.
+3. Install dependencies with `npm install`.
+4. Start the API with `node server.js`.
 
 The server syncs the gamification models and creates the starter quest templates when they are missing. The quest API also ensures templates exist when listing, assigning, or completing quests, so an empty quest table is repaired automatically. Better Auth owns the existing PostgreSQL `"user"` table; this service stores gamification data in `user_profiles` and `user_quest_progress` and references Better Auth user IDs.
 
@@ -17,5 +18,6 @@ The server syncs the gamification models and creates the starter quest templates
 - `POST /api/quests/complete` — log a quest session using `{ "userId": "better-auth-user-id", "questId": 1, "durationSpentMinutes": 12 }` (`durationSpentMinutes` defaults to 10); the quest's base XP is increased by 2 XP for every minute over 10.
 - `GET /api/profile/:userId` — return profile stats and progress toward the 30-day "Productive Enough" badge.
 - `GET /api/leaderboard` — return the top 10 users by total XP, or filter session XP and duration with `?category=mental`, `?category=physical`, or `?category=puzzle`.
+- `POST /api/ai/coach` — generate personalized coaching with `{ "userId": "better-auth-user-id", "message": "optional question" }`. The optional message is limited to 2,000 characters; upstream generation has a 20-second timeout.
 
 Levels are calculated as `floor(xp / 20) + 1`. Each completed quest session increments the user's streak count.
